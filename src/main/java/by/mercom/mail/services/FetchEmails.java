@@ -29,21 +29,18 @@ public class FetchEmails {
         String mask_topic = cmd.getOptionValue("t");
         Pattern subjectPattern = mask_topic == null ? Pattern.compile(".*") : Pattern.compile(mask_topic);
 
-        Path catalog = null;
+        String catalog = "";
         if (cmd.hasOption("c")) {
             Path path = Paths.get(cmd.getOptionValue("c"));
-            if(Files.isDirectory(path))  catalog = path;
+            if(Files.isDirectory(path)) catalog = path.toString();
         }
 
         Message[] messages = imapFolder.search(new FlagTerm(new Flags(Flags.Flag.SEEN), false));
         for (Message message : messages) {
             ProcResult result = processMsg(message, fromPattern, subjectPattern, filesPattern, catalog);
             if (result.msgIsProcessed()) {
-                if (cmd.hasOption("r")) {
-                    message.setFlag(Flags.Flag.DELETED, true);
-                }else {
-                    message.setFlag(Flags.Flag.SEEN, true);
-                }
+                message.setFlag(Flags.Flag.SEEN, true);
+                if(cmd.hasOption("r")) message.setFlag(Flags.Flag.DELETED, true);
             }
             if(cmd.hasOption("v")) result.printResult();
         }
@@ -58,11 +55,19 @@ public class FetchEmails {
         return false;
     }
 
+    private Path getUnicFileName(String catalog, String fileName) {
+        if (Files.exists(Paths.get(catalog, fileName))) {
+            return getUnicFileName(catalog, "cp" + fileName);
+        }else {
+            return Paths.get(catalog, fileName);
+        }
+    }
+
     private ProcResult processMsg(Message message,
                                   Pattern fromPattern,
                                   Pattern subjectPattern,
                                   Pattern filesPattern,
-                                  Path catalog) throws MessagingException {
+                                  String catalog) throws MessagingException {
 
         ProcResult result = new ProcResult();
         if(!addressSuitable(message.getFrom(), fromPattern)){return result;}
@@ -106,9 +111,10 @@ public class FetchEmails {
                     continue;
                 }
                 if (filesPattern.matcher(fileName).matches()) {
-                    try {
-                        Path pathFile = catalog == null ? Paths.get(fileName) : Paths.get(catalog.toString(), fileName);
-                        Files.copy(bodyPart.getInputStream(), pathFile);
+
+                    Path pathToFile = getUnicFileName(catalog, fileName);
+                    try{
+                        Files.copy(bodyPart.getInputStream(), pathToFile);
                         result.addFileName(fileName, true);
                     } catch (Exception ex) {
                         result.addFileName(fileName, false);
@@ -125,7 +131,7 @@ public class FetchEmails {
     private Folder getImapFolder(CommandLine cmd) throws MessagingException {
         Properties prop = new Properties();
         Session session = Session.getInstance(prop);
-        String protocol = cmd.hasOption("sec") ? "imap" : "imaps";
+        String protocol = cmd.hasOption("sec") ? "imaps" : "imap";
         final IMAPStore store = (IMAPStore) session.getStore(protocol);
         final String server = cmd.getOptionValue("s");
         final String login = cmd.getOptionValue("l");
